@@ -12,217 +12,248 @@ class DFSAssistant {
     this.exposures = {};
     this.useMarketProjections = false;
     
+
+    this.positionLimits = {
+      'QB': 1,
+      'RB': 1,  // 1 RB slot + potentially 1 FLEX
+      'WR': 2,  // 2 WR slots
+      'TE': 1,  // 1 TE slot + potentially 1 FLEX
+      'FLEX': 1 // Can be RB or TE
+    };
+    
+    // Track positions filled
+    this.myPositionsFilled = {
+      'QB': 0,
+      'RB': 0,
+      'WR': 0,
+      'TE': 0,
+      'FLEX': null // Will store 'RB' or 'TE' when filled
+    };
+    
+    this.is12PersonDraft = false; // Will be set in loadDraftData
+    
     this.init();
   }
-  
+
   async init() {
-    console.log('Initializing DFS Assistant...');
-    
-    // Add styles
-    const style = document.createElement('style');
-    style.textContent = `
-      #dfs-assistant {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        width: 320px;
-        min-width: 280px;
-        max-width: 500px;
-        height: 600px;
-        min-height: 400px;
-        max-height: 90vh;
-        background: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
-        z-index: 99999;
-        display: flex;
-        flex-direction: column;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        resize: both;
-        overflow: auto;
-      }
-      
-      #dfs-assistant.minimized {
-        height: auto;
-        min-height: auto;
-        resize: none;
-      }
-      
-      #dfs-assistant.minimized .dfs-content,
-      #dfs-assistant.minimized .dfs-tabs,
-      #dfs-assistant.minimized .dfs-info {
-        display: none;
-      }
-      
-      .dfs-header {
-        background: #0f0f0f;
-        padding: 10px 15px;
-        border-radius: 8px 8px 0 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: grab;
-        user-select: none;
-      }
-      
-      .dfs-title {
-        color: #4CAF50;
-        font-weight: 600;
-        font-size: 14px;
-      }
-      
-      .dfs-controls {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-      }
-      
-      .dfs-info {
-        background: #151515;
-        padding: 8px 15px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 13px;
-        border-bottom: 1px solid #333;
-      }
-      
-      .dfs-tabs {
-        display: flex;
-        background: #0f0f0f;
-        border-bottom: 1px solid #333;
-      }
-      
-      .dfs-tab {
-        flex: 1;
-        padding: 10px;
-        background: none;
-        border: none;
-        color: #999;
-        cursor: pointer;
-        font-size: 13px;
-        transition: all 0.2s;
-      }
-      
-      .dfs-tab.active {
-        color: #4CAF50;
-        background: rgba(76, 175, 80, 0.1);
-      }
-      
-      .dfs-content {
-        flex: 1;
-        overflow: hidden;
-        position: relative;
-      }
-      
-      .dfs-panel {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: none;
-        flex-direction: column;
-      }
-      
-      .dfs-panel.active {
-        display: flex;
-      }
-      
-      .player-list {
-        flex: 1;
-        overflow-y: auto;
-        padding: 0 10px 10px;
-      }
-      
-      .player-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px;
-        background: #151515;
-        border: 1px solid #222;
-        border-radius: 4px;
-        margin-bottom: 5px;
-        font-size: 13px;
-      }
-      
-      .player-row:hover {
-        background: #1f1f1f;
-        border-color: #333;
-      }
-      
-      .player-info {
-        flex: 1;
-        min-width: 0;
-      }
-      
-      .player-name {
-        display: block;
-        color: #fff;
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      
-      .player-meta {
-        display: block;
-        color: #999;
-        font-size: 11px;
-        margin-top: 2px;
-      }
-      
-      .player-stats {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-right: 8px;
-        font-size: 12px;
-      }
-      
-      .projection {
-        color: #4CAF50;
-        font-weight: 600;
-        min-width: 35px;
-        text-align: right;
-      }
-      
-      .queue-btn {
-        background: none;
-        border: 1px solid #4CAF50;
-        color: #4CAF50;
-        padding: 3px 6px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: all 0.2s;
-      }
-      
-      .queue-btn:hover {
-        background: #4CAF50;
-        color: white;
-      }
-    `;
-    if (document.head) {
-      document.head.appendChild(style);
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        document.head.appendChild(style);
+    console.log('🎯 DFS Assistant initializing...');
+    console.log('📋 Draft ID:', this.draftId);
+
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => {
+        document.addEventListener('DOMContentLoaded', resolve);
       });
     }
     
-    await this.waitForDraftElements();
-    await this.loadDraftData();
-    this.createUI();
-    await this.loadProjections();
-    await this.loadExposures();
-    this.injectWebSocketListener();
-    this.setupAPIInterceptor();
-    this.startMonitoring();
-    
-    console.log('Ready! Position detection in progress...');
+    try {
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        #dfs-assistant {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          width: 320px;
+          min-width: 280px;
+          max-width: 500px;
+          height: 600px;
+          min-height: 400px;
+          max-height: 90vh;
+          background: #1a1a1a;
+          border: 1px solid #333;
+          border-radius: 8px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+          z-index: 99999;
+          display: flex;
+          flex-direction: column;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          resize: both;
+          overflow: auto;
+        }
+        
+        #dfs-assistant.minimized {
+          height: auto;
+          min-height: auto;
+          resize: none;
+        }
+        
+        #dfs-assistant.minimized .dfs-content,
+        #dfs-assistant.minimized .dfs-tabs,
+        #dfs-assistant.minimized .dfs-info {
+          display: none;
+        }
+        
+        .dfs-header {
+          background: #0f0f0f;
+          padding: 10px 15px;
+          border-radius: 8px 8px 0 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          cursor: grab;
+          user-select: none;
+        }
+        
+        .dfs-title {
+          color: #4CAF50;
+          font-weight: 600;
+          font-size: 14px;
+        }
+        
+        .dfs-controls {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+        
+        .dfs-info {
+          background: #151515;
+          padding: 8px 15px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 13px;
+          border-bottom: 1px solid #333;
+        }
+        
+        .dfs-tabs {
+          display: flex;
+          background: #0f0f0f;
+          border-bottom: 1px solid #333;
+        }
+        
+        .dfs-tab {
+          flex: 1;
+          padding: 10px;
+          background: none;
+          border: none;
+          color: #999;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+        
+        .dfs-tab.active {
+          color: #4CAF50;
+          background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .dfs-content {
+          flex: 1;
+          overflow: hidden;
+          position: relative;
+        }
+        
+        .dfs-panel {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: none;
+          flex-direction: column;
+        }
+        
+        .dfs-panel.active {
+          display: flex;
+        }
+        
+        .player-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0 10px 10px;
+        }
+        
+        .player-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px;
+          background: #151515;
+          border: 1px solid #222;
+          border-radius: 4px;
+          margin-bottom: 5px;
+          font-size: 13px;
+        }
+        
+        .player-row:hover {
+          background: #1f1f1f;
+          border-color: #333;
+        }
+        
+        .player-info {
+          flex: 1;
+          min-width: 0;
+        }
+        
+        .player-name {
+          display: block;
+          color: #fff;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        .player-meta {
+          display: block;
+          color: #999;
+          font-size: 11px;
+          margin-top: 2px;
+        }
+        
+        .player-stats {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-right: 8px;
+          font-size: 12px;
+        }
+        
+        .projection {
+          color: #4CAF50;
+          font-weight: 600;
+          min-width: 35px;
+          text-align: right;
+        }
+        
+        .queue-btn {
+          background: none;
+          border: 1px solid #4CAF50;
+          color: #4CAF50;
+          padding: 3px 6px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+        
+        .queue-btn:hover {
+          background: #4CAF50;
+          color: white;
+        }
+      `;
+      if (document.head) {
+        document.head.appendChild(style);
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          document.head.appendChild(style);
+        });
+      }
+      
+      await this.waitForDraftElements();
+      await this.loadDraftData();
+      this.createUI();
+      await this.loadProjections();
+      await this.loadExposures();
+      this.injectWebSocketListener();
+      this.setupAPIInterceptor();
+      this.startMonitoring();
+      
+      console.log('Ready! Position detection in progress...');
+    } catch (error) {
+      console.error('Initialization failed:', error);
+    }
   }
   
   async waitForDraftElements() {
@@ -256,6 +287,9 @@ class DFSAssistant {
     const is6PersonDraft = window.location.pathname.includes('/tournament/') || 
                           window.location.pathname.includes('/active/');
     const draftSize = is6PersonDraft ? 6 : 12;
+    
+    // Track draft type
+    this.is12PersonDraft = (draftSize === 12);
     
     this.draftData = {
       draft_entries: new Array(draftSize).fill(0).map((_, i) => ({
@@ -471,6 +505,14 @@ class DFSAssistant {
   }
   
   createUI() {
+    if (document.getElementById('dfs-assistant')) return;
+    
+    if (!document.body) {
+      console.log('Waiting for document.body...');
+      setTimeout(() => this.createUI(), 100);
+      return;
+    }
+    
     const container = document.createElement('div');
     container.id = 'dfs-assistant';
   
@@ -502,7 +544,10 @@ class DFSAssistant {
       
       <div class="dfs-content">
         <div id="available-panel" class="dfs-panel active">
-          <input type="text" id="player-search" placeholder="Search players...">
+          <input type="text" id="player-search" placeholder="Search players..." 
+                 style="margin: 10px; padding: 8px; width: calc(100% - 20px); 
+                        background: #0f0f0f; border: 1px solid #333; 
+                        border-radius: 4px; color: white;">
           <div id="player-list" class="player-list"></div>
         </div>
         
@@ -518,9 +563,12 @@ class DFSAssistant {
           <div class="team-selector-wrapper">
             <select id="team-selector">
               <option value="mine">My Team</option>
-              ${Array.from({length: this.draftData.draft_entries.length}, (_, i) => 
-                `<option value="${i}">Team ${i + 1}</option>`
-              ).join('')}
+              ${this.draftData?.draft_entries ? 
+                Array.from({length: this.draftData.draft_entries.length}, (_, i) => 
+                  `<option value="${i}">Team ${i + 1}</option>`
+                ).join('') : 
+                ''
+              }
             </select>
           </div>
           <div id="my-team-list" class="player-list"></div>
@@ -533,6 +581,7 @@ class DFSAssistant {
     `;
     
     document.body.appendChild(container);
+    console.log('✅ UI created successfully');
     
     this.makeDraggable(container);
     this.setupUIListeners();
@@ -783,39 +832,78 @@ class DFSAssistant {
     const pickedIds = new Set(this.picks.map(p => p.appearance_id));
     const currentPick = this.picks.length + 1;
     
-    // Get available players
+    // Get available players and filter by position limits
     const available = players
       .filter(p => !pickedIds.has(p.id))
+      .filter(p => {
+        // Check if position is available
+        const position = p.position;
+        
+        // QB check - simple, only 1 allowed
+        if (position === 'QB' && this.myPositionsFilled['QB'] >= 1) {
+          return false;
+        }
+        
+        // WR check - only 2 allowed
+        if (position === 'WR' && this.myPositionsFilled['WR'] >= 2) {
+          return false;
+        }
+        
+        // RB check - 1 RB slot + potential FLEX
+        if (position === 'RB') {
+          const rbCount = this.myPositionsFilled['RB'];
+          if (rbCount >= 1 && this.myPositionsFilled['FLEX'] !== null) {
+            return false; // Both RB and FLEX filled
+          }
+        }
+        
+        // TE check - 1 TE slot + potential FLEX
+        if (position === 'TE') {
+          const teCount = this.myPositionsFilled['TE'];
+          if (teCount >= 1 && this.myPositionsFilled['FLEX'] !== null) {
+            return false; // Both TE and FLEX filled
+          }
+        }
+        
+        return true;
+      })
       .map(p => ({
         ...p,
         projection: this.projections[p.name] || 0,
-        adp: this.getPlayerADP(p.name) || 999, // Need ADP data
+        adp: this.getPlayerADP(p.name) || 999,
         score: 0
       }));
     
-    // Calculate actual value scores
+    // Calculate value scores
     for (const player of available) {
-      // Base score from projection
       let score = player.projection;
       
-      // ADP value (picking below ADP = good)
+      // ADP value
       const adpDiff = player.adp - currentPick;
       if (adpDiff > 0) {
-        score *= (1 + adpDiff / 100); // Boost if below ADP
+        score *= (1 + adpDiff / 100);
       } else {
-        score *= (1 + adpDiff / 200); // Slight penalty if above ADP
+        score *= (1 + adpDiff / 200);
       }
       
-      // Positional scarcity adjustment
-      const positionMultiplier = {
-        'QB': 0.9,  // Plenty of QBs
-        'RB': 1.2,  // Scarce
-        'WR': 1.1,  // Important
-        'TE': 1.15  // Scarce elite ones
-      };
-      score *= positionMultiplier[player.position] || 1;
+      // Position-specific adjustments
+      let positionMultiplier = 1.0;
       
-      // Stack bonus (keep this part)
+      if (player.position === 'QB' && this.myPositionsFilled['QB'] === 0) {
+        positionMultiplier = 1.1; // Boost if no QB yet
+      } else if (player.position === 'RB') {
+        // Higher value for RBs since they can fill FLEX too
+        positionMultiplier = this.myPositionsFilled['RB'] === 0 ? 1.3 : 1.1;
+      } else if (player.position === 'WR') {
+        positionMultiplier = 1.1 - (this.myPositionsFilled['WR'] * 0.05);
+      } else if (player.position === 'TE') {
+        // Elite TEs get boost, especially if no TE yet
+        positionMultiplier = this.myPositionsFilled['TE'] === 0 ? 1.2 : 1.0;
+      }
+      
+      score *= positionMultiplier;
+      
+      // Stack bonus
       if (this.hasStackPotential(player)) {
         score *= 1.1;
       }
@@ -823,23 +911,38 @@ class DFSAssistant {
       player.score = score;
     }
     
-    // Sort by actual value
+    // Sort by value
     available.sort((a, b) => b.score - a.score);
     
-    // Display with better info
-    container.innerHTML = available.slice(0, 20).map(player => `
-      <div class="player-row">
-        <div class="player-info">
-          <span class="player-name">${player.name}</span>
-          <span class="player-meta">${player.position} - ADP: ${player.adp}</span>
+    // Display with position status
+    container.innerHTML = available.slice(0, 20).map(player => {
+      let positionStatus = '';
+      if (player.position === 'QB') {
+        positionStatus = `(${this.myPositionsFilled['QB']}/1)`;
+      } else if (player.position === 'WR') {
+        positionStatus = `(${this.myPositionsFilled['WR']}/2)`;
+      } else if (player.position === 'RB') {
+        const flexUsed = this.myPositionsFilled['FLEX'] === 'RB' ? 1 : 0;
+        positionStatus = `(${this.myPositionsFilled['RB'] + flexUsed}/2)`;
+      } else if (player.position === 'TE') {
+        const flexUsed = this.myPositionsFilled['FLEX'] === 'TE' ? 1 : 0;
+        positionStatus = `(${this.myPositionsFilled['TE'] + flexUsed}/2)`;
+      }
+      
+      return `
+        <div class="player-row">
+          <div class="player-info">
+            <span class="player-name">${player.name}</span>
+            <span class="player-meta">${player.position} ${positionStatus} - ADP: ${player.adp}</span>
+          </div>
+          <div class="player-stats">
+            <span class="projection">${player.projection.toFixed(1)}</span>
+            <span class="value-score">${player.score.toFixed(1)}</span>
+          </div>
+          <button class="queue-btn" onclick="window.queuePlayer('${player.name.replace(/'/g, "\\'")}')">★</button>
         </div>
-        <div class="player-stats">
-          <span class="projection">${player.projection.toFixed(1)}</span>
-          <span class="value-score">${player.score.toFixed(1)}</span>
-        </div>
-        <button class="queue-btn" onclick="window.queuePlayer('${player.name.replace(/'/g, "\\'")}')">★</button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
   
   // Add helper method right after updateRecommendedPlayers
@@ -926,33 +1029,40 @@ class DFSAssistant {
   }
 
   getPlayersFromDOM() {
-    const players = [];
+    const playerMap = {};
     const playerElements = document.querySelectorAll('[data-testid="player-cell-wrapper"]');
     
     playerElements.forEach(el => {
-      const name = el.querySelector('.styles__playerName__FI3Zf')?.textContent;
-      const position = el.querySelector('.styles__slotBadge__yq_bc')?.textContent;
-      const team = el.querySelector('.styles__matchText__vfe3n')?.textContent?.split(' ')[0];
-      const stats = Array.from(el.querySelectorAll('.styles__statValue__Y_ogY'))
-        .map(s => s.textContent);
+      const name = el.querySelector('.styles__playerName__FI3Zf')?.textContent?.trim();
       
-      let playerId = el.dataset.playerId || 
-                    el.closest('[data-player-id]')?.dataset.playerId ||
-                    el.id ||
-                    name?.replace(/\s+/g, '-').toLowerCase();
-      
-      if (name) {
-        players.push({
-          id: playerId,
-          name: name.trim(),
+      // Only process if we have a name AND haven't seen it before
+      if (name && !playerMap[name]) {
+        const position = el.querySelector('.styles__slotBadge__yq_bc')?.textContent;
+        const team = el.querySelector('.styles__matchText__vfe3n')?.textContent?.split(' ')[0];
+        const stats = Array.from(el.querySelectorAll('.styles__statValue__Y_ogY'))
+          .map(s => s.textContent);
+        
+        playerMap[name] = {
+          id: el.dataset.playerId || 
+              el.closest('[data-player-id]')?.dataset.playerId ||
+              el.id ||
+              name.replace(/\s+/g, '-').toLowerCase(),
+          name: name,
           position: position?.trim() || 'UNK',
           team: team?.trim() || 'UNK',
           stats
-        });
+        };
       }
     });
     
-    console.log(`Found ${players.length} players in DOM`);
+    const players = Object.values(playerMap);
+    
+    // Only log if count changed significantly
+    if (Math.abs(players.length - (this.lastLoggedCount || 0)) > 5) {
+      console.log(`Found ${players.length} unique players`);
+      this.lastLoggedCount = players.length;
+    }
+    
     return players;
   }
   
@@ -1029,6 +1139,8 @@ class DFSAssistant {
     }
     
     this.myPicks = [];
+    this.myPositionsFilled = { 'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0, 'FLEX': null };
+    
     const numEntries = this.draftData.draft_entries.length;
     
     this.picks.forEach((pick, index) => {
@@ -1038,13 +1150,56 @@ class DFSAssistant {
       
       if (expectedPos === this.myPosition) {
         this.myPicks.push(pick);
+        
+        // Track position filled
+        const playerInfo = this.getPlayerInfoFromPick(pick);
+        if (playerInfo) {
+          const position = playerInfo.position;
+          
+          // Handle FLEX logic
+          if (position === 'RB') {
+            if (this.myPositionsFilled['RB'] === 0) {
+              this.myPositionsFilled['RB']++;
+            } else if (this.myPositionsFilled['FLEX'] === null) {
+              this.myPositionsFilled['FLEX'] = 'RB';
+            }
+          } else if (position === 'TE') {
+            if (this.myPositionsFilled['TE'] === 0) {
+              this.myPositionsFilled['TE']++;
+            } else if (this.myPositionsFilled['FLEX'] === null) {
+              this.myPositionsFilled['FLEX'] = 'TE';
+            }
+          } else if (this.myPositionsFilled[position] !== undefined) {
+            this.myPositionsFilled[position]++;
+          }
+        }
       }
     });
     
+    console.log('My positions filled:', this.myPositionsFilled);
+    
     document.querySelector('[data-tab="my-team"]').textContent = `My Team (${this.myPicks.length})`;
     this.updateMyTeamTab();
-    
     this.checkDuplication();
+  }
+
+  getPlayerInfoFromPick(pick) {
+    // Try to find in current DOM
+    const domPlayers = this.getPlayersFromDOM();
+    const player = domPlayers.find(p => 
+      p.id === pick.appearance_id || 
+      p.name === pick.player_name
+    );
+    
+    if (player) return player;
+    
+    // Fallback to stored data
+    return {
+      name: pick.player_name || 'Unknown',
+      position: pick.position || '?',
+      team: pick.team || '?',
+      id: pick.appearance_id
+    };
   }
   
   updateAllTeamsView() {
@@ -1162,16 +1317,16 @@ class DFSAssistant {
     // Initialize player count tracker
     this.lastPlayerCount = 0;
     
-    // Monitor for player count changes
+    // Reduce update frequency to every 3 seconds instead of 2
     setInterval(() => {
       const players = this.getPlayersFromDOM();
-      if (players.length > 0 && this.lastPlayerCount !== players.length) {
+      if (players.length > 0 && Math.abs(this.lastPlayerCount - players.length) > 2) {
         console.log(`Player count changed: ${this.lastPlayerCount} -> ${players.length}`);
         this.lastPlayerCount = players.length;
         this.updateAvailablePlayers();
         this.updateRecommendedPlayers();
       }
-    }, 2000);
+    }, 3000);
     
     // Add scroll listener for React virtualized list
     setTimeout(() => {
@@ -1198,9 +1353,14 @@ class DFSAssistant {
     console.log('📥 RAW PICK DATA:', pickData);
     const pick = typeof pickData === 'string' ? JSON.parse(pickData) : pickData;
     
+    // Try to get player info from DOM or data
+    const playerInfo = this.getPlayerInfoFromPick(pick);
+    pick.position = playerInfo.position; // Store position with pick
+    pick.team = playerInfo.team;
+    
     // Store the pick
     this.picks.push(pick);
-    console.log(`📊 Total picks: ${this.picks.length}, Pick #${pick.number || this.picks.length}`);
+    console.log(`📊 Pick #${this.picks.length}: ${pick.player_name} (${pick.position})`);
     
     // Determine which team made the pick
     const pickNumber = pick.number || this.picks.length;
@@ -1208,12 +1368,28 @@ class DFSAssistant {
     const round = Math.ceil(pickNumber / numEntries);
     const position = this.getPickPositionInRound(pickNumber, round, numEntries);
     
-    console.log(`Team at position ${position} picked ${pick.player_name || 'Unknown'}`);
-    
     // Update my picks if it's mine
     if (position === this.myPosition) {
       this.myPicks.push(pick);
-      console.log('✅ My pick!', this.myPicks.length, 'total');
+      if (this.myPositionsFilled[pick.position] !== undefined) {
+        // Handle FLEX logic
+        if (pick.position === 'RB') {
+          if (this.myPositionsFilled['RB'] === 0) {
+            this.myPositionsFilled['RB']++;
+          } else if (this.myPositionsFilled['FLEX'] === null) {
+            this.myPositionsFilled['FLEX'] = 'RB';
+          }
+        } else if (pick.position === 'TE') {
+          if (this.myPositionsFilled['TE'] === 0) {
+            this.myPositionsFilled['TE']++;
+          } else if (this.myPositionsFilled['FLEX'] === null) {
+            this.myPositionsFilled['FLEX'] = 'TE';
+          }
+        } else {
+          this.myPositionsFilled[pick.position]++;
+        }
+      }
+      console.log('✅ My pick!', pick.position, 'Positions filled:', this.myPositionsFilled);
     }
     
     // Update all UI elements
@@ -1221,7 +1397,7 @@ class DFSAssistant {
     this.updateAvailablePlayers();
     this.updateRecommendedPlayers();
     this.updatePickCounter();
-    this.updateAllTeamsView(); 
+    this.updateAllTeamsView();
   }
   
   updatePickCounter() {
@@ -1307,25 +1483,81 @@ class DFSAssistant {
     console.error('Could not find star button for:', playerName);
   };
   
-// Initialize immediately and store reference
+// Initialize immediately and store reference - FIXED VERSION
 (function() {
   console.log('Creating DFS Assistant instance...');
-  const dfsAssistant = new DFSAssistant();
   
-  // Wait for element and store reference
-  const storeReference = setInterval(() => {
-    const element = document.getElementById('dfs-assistant');
-    if (element) {
-      element.__dfsAssistant = dfsAssistant;
-      console.log('Stored on element:', element.__dfsAssistant);
-      clearInterval(storeReference);
-    }
-  }, 100);
-  
-  // Also expose a getter function
-  document.getDFS = () => {
-    return document.getElementById('dfs-assistant')?.__dfsAssistant || dfsAssistant;
-  };
-  
-  console.log('DFS Assistant created');
+  try {
+    const dfsAssistant = new DFSAssistant();
+    
+    // CRITICAL: Force store in global window object
+    Object.defineProperty(window, 'dfsAssistant', {
+      value: dfsAssistant,
+      writable: false,
+      enumerable: true,
+      configurable: true
+    });
+    
+    Object.defineProperty(window, 'dfs', {
+      value: dfsAssistant,
+      writable: false,
+      enumerable: true,
+      configurable: true
+    });
+    
+    // Add getter function
+    Object.defineProperty(window, 'getDFS', {
+      value: function() {
+        return dfsAssistant;
+      },
+      writable: false,
+      enumerable: true,
+      configurable: true
+    });
+    
+    // Store on element when it exists
+    const storeInterval = setInterval(() => {
+      const element = document.getElementById('dfs-assistant');
+      if (element) {
+        element.__dfsAssistant = dfsAssistant;
+        console.log('✅ DFS Assistant stored on element');
+        clearInterval(storeInterval);
+      }
+    }, 100);
+    
+    console.log('✅ DFS Assistant created and stored globally');
+    
+    // Verify storage worked
+    setTimeout(() => {
+      console.log('Global access test - window.dfs exists:', !!window.dfs);
+    }, 1000);
+    
+  } catch (error) {
+    console.error('❌ Failed to create DFS Assistant:', error);
+  }
 })();
+
+// Expose to page context for console access
+setTimeout(() => {
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        const el = document.getElementById('dfs-assistant');
+        if (el && el.__dfsAssistant) {
+          window.dfs = el.__dfsAssistant;
+          window.dfsAssistant = el.__dfsAssistant;
+          window.getDFS = () => el.__dfsAssistant;
+          console.log('✅ DFS exposed to page - use window.dfs in console');
+          clearInterval(checkInterval);
+        } else if (++attempts > 50) {
+          console.error('Failed to expose DFS to page');
+          clearInterval(checkInterval);
+        }
+      }, 100);
+    })();
+  `;
+  document.head.appendChild(script);
+  script.remove();
+}, 2000);

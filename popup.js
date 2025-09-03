@@ -90,26 +90,33 @@ async function uploadETR() {
 }
 
 function parseETRCSV(text) {
-  const lines = text.split('\n').filter(line => line.trim());
+  const lines = text.split(/\r?\n/).filter(line => line.trim());
+  
   if (lines.length < 2) {
     throw new Error('CSV file appears to be empty');
   }
   
-  // Parse headers - ETR format has specific column names
-  const headers = lines[0].split(',').map(h => h.trim());
+  // Parse headers
+  const headers = parseCSVLine(lines[0]).map(h => h.trim());
   
-  // Find column indices based on ETR format
+  console.log('CSV Headers found:', headers);
+  
+  // Find column indices - UPDATED FOR NEW FORMAT
   const columnMap = {
     name: headers.findIndex(h => h === 'Player'),
-    position: headers.findIndex(h => h === 'Position'),
-    team: headers.findIndex(h => h === 'Team'),
     projection: headers.findIndex(h => h === 'UD Projection'),
     id: headers.findIndex(h => h === 'id'),
+    position: headers.findIndex(h => h === 'Position'),
+    team: headers.findIndex(h => h === 'Team'),
+    opponent: headers.findIndex(h => h === 'Opponent'),
     adp: headers.findIndex(h => h === 'ADP'),
-    opponent: headers.findIndex(h => h === 'Opponent')
+    rank: headers.findIndex(h => h === 'Rank'),
+    ceiling: headers.findIndex(h => h === 'UD Ceiling')
   };
   
-  // Validate we found the required columns
+  console.log('Column mapping:', columnMap);
+  
+  // Validate required columns
   if (columnMap.name === -1) {
     throw new Error('Could not find "Player" column in CSV');
   }
@@ -124,24 +131,42 @@ function parseETRCSV(text) {
     const line = lines[i].trim();
     if (!line) continue;
     
-    // Handle CSV with potential commas in values (wrapped in quotes)
-    const values = parseCSVLine(line);
-    
-    // Extract player data based on column mapping
-    const playerName = values[columnMap.name]?.trim();
-    const projection = parseFloat(values[columnMap.projection]) || 0;
-    
-    if (playerName && projection > 0) {
-      players.push({
+    try {
+      const values = parseCSVLine(line);
+      
+      const playerName = values[columnMap.name]?.trim();
+      const projection = parseFloat(values[columnMap.projection]) || 0;
+      
+      // Skip invalid rows
+      if (!playerName || projection <= 0) {
+        continue;
+      }
+      
+      const player = {
         name: playerName,
         projection: projection,
+        id: columnMap.id !== -1 ? values[columnMap.id]?.trim() : '',
+        appearance_id: columnMap.id !== -1 ? values[columnMap.id]?.trim() : '', // Store as both
         position: columnMap.position !== -1 ? values[columnMap.position]?.trim() : '',
         team: columnMap.team !== -1 ? values[columnMap.team]?.trim() : '',
-        id: columnMap.id !== -1 ? values[columnMap.id]?.trim() : '',
+        opponent: columnMap.opponent !== -1 ? values[columnMap.opponent]?.trim() : '',
         adp: columnMap.adp !== -1 ? parseFloat(values[columnMap.adp]) || 999 : 999,
-        opponent: columnMap.opponent !== -1 ? values[columnMap.opponent]?.trim() : ''
-      });
+        rank: columnMap.rank !== -1 ? parseInt(values[columnMap.rank]) || 999 : 999,
+        ceiling: columnMap.ceiling !== -1 ? parseFloat(values[columnMap.ceiling]) || 0 : 0
+      };
+      
+      players.push(player);
+      
+    } catch (rowError) {
+      console.log(`Error parsing row ${i}:`, rowError.message);
     }
+  }
+  
+  console.log(`Successfully parsed ${players.length} players`);
+  console.log('Sample players:', players.slice(0, 3));
+  
+  if (players.length === 0) {
+    throw new Error('No valid player data found. Check your CSV format.');
   }
   
   return players;
