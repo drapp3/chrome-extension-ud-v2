@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Underdog DFS Assistant",
+  "version": "1.0.0",
+  "description": "Multi-user DFS draft assistant",
+  
+  "permissions": ["storage", "tabs"],
+  
+  "host_permissions": [
+    "*://underdogfantasy.com/*",
+    "*://app.underdogfantasy.com/*",
+    "*://api.underdogfantasy.com/*",
+    "https://chrome-extension-ud-v2-production.up.railway.app/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [{
+    "matches": [
+      "*://underdogfantasy.com/*",
+      "*://app.underdogfantasy.com/*"
+    ],
+    "js": ["content.js"],
+    "css": ["styles.css"],
+    "run_at": "document_start"
+  }],
+  
+  "action": {
+    "default_popup": "popup.html"
+  },
+  
+  "web_accessible_resources": [{
+    "resources": ["inject.js"],
+    "matches": [
+      "*://underdogfantasy.com/*",
+      "*://app.underdogfantasy.com/*"
+    ]
+  }]
+}
